@@ -158,7 +158,15 @@ def system_terminal_command(args):
 # NÚCLEO DE AUTENTICAÇÃO HÍBRIDA (PC / RENDER)
 # ==========================================
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',    # Google Sheets API
+    'https://www.googleapis.com/auth/calendar',        # Agenda / CalDAV
+    'https://www.googleapis.com/auth/drive',           # Google Drive (Cobre Docs e gerenciamento de arquivos)
+    'https://www.googleapis.com/auth/documents',       # Google Docs
+    'https://www.googleapis.com/auth/cloud_search',    # Cloud Search API
+    'https://www.googleapis.com/auth/gmail.modify',    # Gmail API
+    'https://www.googleapis.com/auth/youtube'          # YouTube Data API v3
+]
 
 def obter_credenciais_google():
     """Gerencia a autenticação buscando arquivos locais ou variáveis de ambiente da Render."""
