@@ -15,6 +15,7 @@ TOOLS = {
     "clear_calendar": tools.clear_calendar,
     "system_terminal_command": tools.system_terminal_command,
     "google_docs": tools.google_docs_tool,
+    "googledocs": tools.google_docs_tool,  # <-- Se ele esquecer o underline, aponta para a mesma função!
     "upload_to_drive": tools.upload_to_drive,
     "enviar_pasta_para_drive": tools.enviar_pasta_para_drive
 }

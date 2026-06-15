@@ -214,7 +214,7 @@ def google_docs_tool(args):
         creds = obter_credenciais_google()
         drive_service = build('drive', 'v3', credentials=creds)
         
-        # 1. BLINDAGEM DE FORMATO DE ENTRADA
+        # 1. BLINDAGEM COMPLETA DE FORMATO DE ENTRADA
         if isinstance(args, str):
             try:
                 args = json.loads(args)
@@ -223,17 +223,18 @@ def google_docs_tool(args):
         elif not isinstance(args, dict):
             args = {}
 
-        # 2. CAPTURA DE VARIÁVEIS COMPATÍVEL COM MANIAS DO LLAMA
+        # 2. CAPTURA SUPER TOLERANTE (Aceita minúsculas, com ou sem underline)
         doc_id = (
             args.get("document_id") or 
             args.get("documentId") or 
+            args.get("documentid") or  # <-- Adicionado para aceitar a mania do Llama
             args.get("file_id") or 
             args.get("id")
         )
         
         content = (
             args.get("content") or 
-            args.get("text") or 
+            args.get("text") or  # <-- Captura se ele mandar como 'text'
             args.get("body") or 
             ""
         )
