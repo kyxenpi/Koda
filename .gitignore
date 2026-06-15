@@ -1,13 +1,3 @@
-# Chaves e credenciais locais
-config.py
-token.json
-credentials.json
-
-# Temporários do Python
+.env
 __pycache__/
 *.pyc
-
-# Ambientes virtuais (se tiver)
-.venv/
-venv/
-env/

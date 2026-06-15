@@ -9,8 +9,8 @@ from flask import Flask, render_template, request, jsonify
 from groq import Groq
 from telegram import Update
 from telegram.ext import Application
+import re
 
-# Importações do seu ecossistema original
 try:
     from tool_registry import TOOLS 
 except ImportError:
@@ -18,7 +18,6 @@ except ImportError:
 
 app = Flask(__name__)
 
-# Configura a API Key da Groq pegando da Render (ou string vazia se local)
 os.environ["GROQ_API_KEY"] = os.getenv("API_KEY", "")
 
 try:
@@ -27,7 +26,6 @@ except Exception as e:
     print(f"❌ Erro ao iniciar Groq: {e}")
     sys.exit(1)
 
-# Configurações do Telegram vindo da Render
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 tg_app = Application.builder().token(TELEGRAM_TOKEN).build() if TELEGRAM_TOKEN else None
 
@@ -35,7 +33,6 @@ MODELO_PRIMARIO = "llama-3.3-70b-versatile"
 MODELO_SECUNDARIO = "llama-3.1-8b-instant"
 MEMORIA_TELEGRAM = {}
 
-# Montagem dinâmica do prompt do sistema com suas ferramentas locais
 lista_ferramentas_texto = ""
 for nome_tool, funcao in TOOLS.items():
     descricao = funcao.__doc__.split('\n')[0].strip() if funcao.__doc__ else "Sem descrição disponível."
@@ -44,38 +41,63 @@ for nome_tool, funcao in TOOLS.items():
 SYSTEM_PROMPT = f"""Você é o Koda, um parceiro de resenha que roda na máquina do usuário. Você é tranquilo, direto, desenrolado e não tem nada de robótico. Você fala como um cara normal que conhece o usuário e a galera do grupo dele.
 
 ### REGRAS DE COMPORTAMENTO CRÍTICAS:
-1. **Ações de Sugestão / Perguntas:** Se o usuário não pediu algo direto, mas você pode ajudar, mande na lata, tipo: "Quer que eu abra o Drive pra você?" ou "Tá precisando que eu faça o upload daquilo?". **NUNCA** envie o JSON junto com a pergunta, só faça a pergunta.
-2. **Ordens Diretas:** Quando o cara mandar fazer, você faz. Responda APENAS com o JSON da ferramenta e mais nada. Sem "aqui está", sem "com certeza", só o JSON.
-3. **Formato de Saída (Ordens Diretas):**
+
+1. **Ordens Diretas (Uso de Ferramentas):** Quando o usuário mandar você fazer uma ação que use uma ferramenta, execute imediatamente. Você deve responder **APENAS** com o objeto JSON da ferramenta, sem textos antes, sem explicações e sem "aqui está". Mande única e exclusivamente o JSON cru.
+
+2. **Formato Exclusivo de Saída para Ferramentas:** Toda e qualquer chamada de ferramenta deve seguir rigorosamente este formato JSON estruturado, sem blocos de código markdown (```json):
 {{
   "tool": "nome_da_ferramenta",
-  "args": "valor_aqui"
+  "args": {{ "parametro1": "valor" }}
 }}
-4. **Conversa:** Quando não for pra usar ferramenta, fale como um cara gente boa. Pode usar gírias, ser sarcástico se o contexto pedir e manter a resenha fluindo. Esqueça termos técnicos ou formais. Se o cara tá zoando, você entra na onda, só seja técnico quando for pedido.
+*(Nota: 'args' deve ser um Objeto/Dicionário JSON estruturado com os parâmetros corretos exigidos pela ferramenta)*
+
+3. **Gerenciamento de Arquivos e IDs (Google Docs/Sheets):** Sempre que você criar um documento ou planilha, guarde o ID retornado no histórico. Se o usuário pedir para escrever, adicionar, editar ou modificar "nesse arquivo", "no documento anterior" ou algo do tipo, você **DEVE** usar o ID correspondente e passar os argumentos corretos da ferramenta (como o id do documento e o texto). Nunca crie um arquivo novo se o usuário pediu para alterar o que já existe.
+
+4. **Interação Humana e Conversa:** Quando o usuário estiver apenas conversando ou batendo papo (e não for caso de usar ferramentas), fale como um cara gente boa. Pode usar gírias, ser direto e manter a resenha fluindo. Esqueça termos técnicos, robóticos ou formais. 
+
+5. **Ações de Sugestão Limitadas:** Se o usuário não pediu algo direto, mas você percebeu que pode adiantar a vida dele, faça apenas uma pergunta direta e limpa no fluxo da conversa (ex: "Quer que eu abra o Drive pra você?"). **NUNCA** coloque um JSON de ferramenta junto com perguntas ou sugestões.
 
 ### ESTILO DE FALA:
-- Seja informal, como se estivesse num grupo de WhatsApp com os parças.
-- Sem papo de "IA", "processamento" ou "funcionalidade".
-- Se algo der erro, fala na boa: "Deu ruim aqui, pera que eu vou ver o que rolou" ou "Vish, não achei o arquivo, manda de novo aí".
-- Zero papo de aura, místico ou coach. Seja só um cara de boa.
+- Seja informal, como se estivesse trocando mensagem com os parças.
+- Sem papo de "IA", "processamento", "assistente virtual" ou "funcionalidade".
+- Se algo der erro na ferramenta, avise de boa: "Deu ruim aqui, pera que eu vou ver o que rolou" ou "Vish, deu erro na API, deixa eu tentar de novo".
 
 Ferramentas disponíveis:
 {lista_ferramentas_texto}"""
 
 def tentar_json(texto):
     try:
-        return json.loads(texto)
-    except:
+        # 1. Sanitização leve caso a IA tente envolver o json em blocos de código ```json
+        if "```" in texto:
+            texto = texto.split("```")[1]
+            if texto.startswith("json"):
+                texto = texto[4:]
+        
+        texto_cru = texto.strip()
+        
+        # 2. Isolamento cirúrgico: Garante que vamos pegar apenas o bloco que abre { e fecha }
+        match = re.search(r'\{.*\}', texto_cru, re.DOTALL)
+        if match:
+            texto_cru = match.group(0)
+
+        # 3. O PULO DO GATO: Corrige quebras de linha reais (Enters) dentro de aspas (strings JSON)
+        # Esse regex encontra quebras de linha literais dentro de aspas e as substitui por '\\n' string válida
+        json_limpo = re.sub(r'(\"[^\"]*?\")\s*', lambda m: m.group(1).replace('\n', '\\n'), texto_cru)
+        
+        return json.loads(json_limpo)
+    except Exception as e:
+        print(f"⚠️ Erro ao tentar processar JSON do Koda: {e}")
         return None
 
 def executar_tool(tool_name, args):
     if tool_name not in TOOLS:
         return f"Ferramenta '{tool_name}' não encontrada."
     try:
+        # Executa a função passando a estrutura limpa (seja ela dict ou str)
         resultado = TOOLS[tool_name](args)
         return str(resultado) if resultado is not None else "Ferramenta executada com sucesso."
     except Exception as e:
-        return f"Erro ao executar ferramenta: {e}"
+        return f"Erro ao executar ferramenta '{tool_name}': {e}"
 
 def processar_cerebro_jarvis(pergunta_usuario, historico_previo=None):
     mensagens_api = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -86,7 +108,6 @@ def processar_cerebro_jarvis(pergunta_usuario, historico_previo=None):
                 role = "user" if msg.get("type") == "user" else "assistant"
                 mensagens_api.append({"role": role, "content": msg.get("text", "")})
                 
-    # A última mensagem do usuário (pergunta_usuario) já vai ser incluída dinamicamente pela chamada da API abaixo
     mensagens_api.append({"role": "user", "content": pergunta_usuario})
     
     fluxo_execucao = []
@@ -162,36 +183,25 @@ def telegram_webhook():
             
             print(f"📩 Mensagem recebida no Telegram: '{texto_usuario}' do Chat ID: {chat_id}")
             
-            # Status "digitando..."
-            url_action = f"https://api.telegram.org/bot{token}/sendChatAction"
+            url_action = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/sendChatAction"
             requests.post(url_action, json={"chat_id": chat_id, "action": "typing"}, timeout=5)
             
-            # 🧠 GERENCIAMENTO DE MEMÓRIA (Corrigido para evitar amnésia):
             if chat_id not in MEMORIA_TELEGRAM:
                 MEMORIA_TELEGRAM[chat_id] = []
                 
-            # 1️⃣ ADICIONA IMEDIATAMENTE a entrada atual à memória antes do cérebro rodar
             MEMORIA_TELEGRAM[chat_id].append({"type": "user", "text": texto_usuario})
             
-            # Mantém apenas as últimas 15 mensagens na memória para controle de limites
             MEMORIA_TELEGRAM[chat_id] = MEMORIA_TELEGRAM[chat_id][-15:]
             
-            # Pegamos o histórico que acabou de receber o "Sim" (ou comando atual)
-            # Retiramos o último item na hora de passar para o historico_previo do cérebro, 
-            # pois o método processar_cerebro_jarvis já adiciona o 'pergunta_usuario' manualmente no fim da lista da API.
             historico_previo = MEMORIA_TELEGRAM[chat_id][:-1]
             
-            # 2️⃣ EXECUTA O CÉREBRO com o contexto perfeitamente alinhado
             resposta_texto, fluxo = processar_cerebro_jarvis(texto_usuario, historico_previo)
             
-            # 3️⃣ ADICIONA A RESPOSTA do Jarvis na memória do sistema
             MEMORIA_TELEGRAM[chat_id].append({"type": "jarvis", "text": resposta_texto})
             
-            # Garante que o limite de 15 mensagens se aplica após a inserção da resposta
             MEMORIA_TELEGRAM[chat_id] = MEMORIA_TELEGRAM[chat_id][-15:]
             
-            # Envio das mensagens de volta para o Telegram
-            url_msg = f"https://api.telegram.org/bot{token}/sendMessage"
+            url_msg = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){token}/sendMessage"
             for etapa in fluxo:
                 if etapa["type"] == "tool":
                     payload_tool = {
