@@ -4,7 +4,7 @@ from typing import Any
 from tools.base import tool
 from core.security import SecurityLevel
 
-@tool("run_python", security_level=SecurityLevel.MEDIUM)
+@tool("run_python", security_level=SecurityLevel.MEDIUM, cloud_compatible=False)
 def run_python(args: Any) -> str:
     """Executa um script Python (.py) local em background."""
     path = args if isinstance(args, str) else args.get("path", "")

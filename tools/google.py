@@ -56,7 +56,7 @@ def get_google_credentials():
                     
     return creds
 
-@tool("google_docs", security_level=SecurityLevel.MEDIUM)
+@tool("google_docs", security_level=SecurityLevel.MEDIUM, cloud_compatible=True)
 def google_docs_tool(args: Any) -> Dict[str, Any]:
     """Cria ou edita documentos no Google Docs gerenciando IDs estruturalmente."""
     try:
@@ -137,7 +137,7 @@ def upload_to_drive(args: Any) -> str:
 # FERRAMENTAS DO GOOGLE AGENDA (CALENDAR)
 # ==========================================
 
-@tool("google_calendar_add", security_level=SecurityLevel.SAFE)
+@tool("google_calendar_add", security_level=SecurityLevel.SAFE, cloud_compatible=True)
 def google_calendar_add(args: Any) -> Dict[str, Any]:
     """Adiciona um evento à agenda do Google. Requer 'summary', 'date' (YYYY-MM-DD) e 'time' (HH:MM). Opcional: 'description'."""
     try:
@@ -190,7 +190,7 @@ def google_calendar_add(args: Any) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@tool("google_calendar_list", security_level=SecurityLevel.SAFE)
+@tool("google_calendar_list", security_level=SecurityLevel.SAFE, cloud_compatible=True)
 def google_calendar_list(args: Any = None) -> Dict[str, Any]:
     """Lista os próximos 10 compromissos da agenda do Google."""
     try:
@@ -223,7 +223,7 @@ def google_calendar_list(args: Any = None) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@tool("google_calendar_clear", security_level=SecurityLevel.MEDIUM)
+@tool("google_calendar_clear", security_level=SecurityLevel.MEDIUM, cloud_compatible=True)
 def google_calendar_clear(args: Any = None) -> Dict[str, Any]:
     """Apaga os próximos compromissos da agenda (limpa os próximos 10 eventos encontrados)."""
     try:

@@ -4,7 +4,7 @@ from typing import Any, Dict
 from tools.base import tool
 from core.security import SecurityLevel
 
-@tool("system_terminal_command", security_level=SecurityLevel.DANGEROUS)
+@tool("system_terminal_command", security_level=SecurityLevel.DANGEROUS, cloud_compatible=False)
 def system_terminal_command(args: Any) -> str:
     """Executa ações pré-mapeadas críticas no terminal por segurança."""
     cmd_type = args.get("comando") if isinstance(args, dict) else args

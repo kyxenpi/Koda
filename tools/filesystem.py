@@ -3,12 +3,12 @@ from typing import Any, Dict
 from tools.base import tool
 from core.security import SecurityLevel
 
-@tool("list_files", security_level=SecurityLevel.SAFE)
+@tool("list_files", security_level=SecurityLevel.SAFE, cloud_compatible=False)
 def list_files(args: Any = None) -> str:
     """Lista todos os arquivos e pastas do diretório atual."""
     return "\n".join([str(p.name) for p in Path(".").iterdir()])
 
-@tool("read_file", security_level=SecurityLevel.SAFE)
+@tool("read_file", security_level=SecurityLevel.SAFE, cloud_compatible=False)
 def read_file(args: Any) -> str:
     """Lê e retorna o conteúdo em formato de texto de um arquivo local."""
     path = Path(args if isinstance(args, str) else args.get("path", ""))
@@ -16,14 +16,14 @@ def read_file(args: Any) -> str:
         return f"Erro: O arquivo '{path}' não existe."
     return path.read_text(encoding="utf-8")
 
-@tool("write_file", security_level=SecurityLevel.MEDIUM)
+@tool("write_file", security_level=SecurityLevel.MEDIUM, cloud_compatible=False)
 def write_file(args: Dict[str, Any]) -> str:
     """Cria um novo arquivo ou sobrescreve um existente. Requer 'path' e 'content'."""
     path = Path(args["path"])
     path.write_text(args["content"], encoding="utf-8")
     return f"Arquivo '{path}' salvo com sucesso."
 
-@tool("append_to_file", security_level=SecurityLevel.MEDIUM)
+@tool("append_to_file", security_level=SecurityLevel.MEDIUM, cloud_compatible=False)
 def append_to_file(args: Dict[str, Any]) -> str:
     """Adiciona texto ao final de um arquivo existente sem sobrescrever."""
     path = Path(args["path"])
