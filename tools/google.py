@@ -1,6 +1,7 @@
 import json
 import datetime
 import io
+import ast 
 from pathlib import Path
 from typing import Any, Dict
 from google.auth.transport.requests import Request
@@ -16,6 +17,28 @@ from core.logger import setup_logger
 from database.memory_db import db
 
 logger = setup_logger("GoogleTools")
+
+def safe_parse_args(args: Any) -> Dict[str, Any]:
+    """Garante que os argumentos sejam convertidos em um dicionário válido, 
+    mesmo se o LLM enviar uma string ou usar aspas simples."""
+    if isinstance(args, dict):
+        return args
+    
+    if isinstance(args, str):
+        args_str = args.strip()
+        # Tenta parsear como JSON padrão
+        try:
+            return json.loads(args_str)
+        except json.JSONDecodeError:
+            # Se falhar (ex: uso de aspas simples pelo modelo), usa ast.literal_eval
+            try:
+                parsed = ast.literal_eval(args_str)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception as e:
+                logger.error(f"Falha ao normalizar argumentos textuais: {e}")
+    
+    return {}
 
 def get_google_credentials():
     creds = None
@@ -35,12 +58,10 @@ def get_google_credentials():
                 creds.refresh(Request())
             except Exception as refresh_error:
                 logger.warning(f"Não foi possível atualizar o token expirado: {refresh_error}")
-                # Se o token foi revogado no painel (invalid_grant), deletamos o arquivo velho para forçar novo login
                 if "invalid_grant" in str(refresh_error) and token_path.exists():
                     token_path.unlink()
-                creds = None  # Reseta para cair no bloco de autenticação abaixo
+                creds = None
 
-        # Se não deu para dar refresh ou o token sumiu, gera um novo fluxo
         if not creds:
             if Path('credentials.json').exists():
                 flow = InstalledAppFlow.from_client_secrets_file('credentials.json', settings.SCOPES)
@@ -63,14 +84,13 @@ def google_docs_tool(args: Any) -> Dict[str, Any]:
         creds = get_google_credentials()
         drive_service = build('drive', 'v3', credentials=creds)
         
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except:
-                args = {"title": f"Doc Koda - {datetime.date.today()}", "content": args}
+        # Garante o parse correto dos argumentos
+        args_dict = safe_parse_args(args)
+        if not args_dict and isinstance(args, str):
+            args_dict = {"title": f"Doc Koda - {datetime.date.today()}", "content": args}
 
-        doc_id = args.get("document_id") or args.get("documentId") or args.get("documentid") or args.get("file_id") or args.get("id")
-        content = args.get("content") or args.get("text") or args.get("body") or ""
+        doc_id = args_dict.get("document_id") or args_dict.get("documentId") or args_dict.get("documentid") or args_dict.get("file_id") or args_dict.get("id")
+        content = args_dict.get("content") or args_dict.get("text") or args_dict.get("body") or ""
 
         if doc_id:
             try:
@@ -83,7 +103,7 @@ def google_docs_tool(args: Any) -> Dict[str, Any]:
             conteudo_limpo = corpo_antigo.replace("<p>", "").replace("</p>", "").replace("<br>", "\n")
             linhas_filtradas = [l for l in content.split('\n') if l.strip() and l.strip() not in conteudo_limpo]
 
-            if not (linhas_filtradas := linhas_filtradas):
+            if not linhas_filtradas:
                 return {
                     "success": True,
                     "result": {
@@ -100,7 +120,7 @@ def google_docs_tool(args: Any) -> Dict[str, Any]:
             drive_service.files().update(fileId=doc_id, media_body=media).execute()
             return {"success": True, "result": {"document_id": doc_id, "status": "Doc atualizado."}}
 
-        title = args.get("title", f"Doc Koda - {datetime.date.today()}")
+        title = args_dict.get("title", f"Doc Koda - {datetime.date.today()}")
         file_metadata = {'name': title, 'mimeType': 'application/vnd.google-apps.document'}
         texto_formatado = content.replace('\n', '<br>')
         content_html = f"<html><body>{texto_formatado}</body></html>"
@@ -144,25 +164,38 @@ def google_calendar_add(args: Any) -> Dict[str, Any]:
         creds = get_google_credentials()
         service = build('calendar', 'v3', credentials=creds)
 
-        if isinstance(args, str):
-            args = json.loads(args)
+        # Normaliza a entrada dos argumentos independente de vir como string errada ou dict
+        args_dict = safe_parse_args(args)
 
-        summary = args.get("summary") or args.get("title") or args.get("description")
-        date = args.get("date")
-        time = args.get("time", "09:00")
-        description = args.get("description", "Adicionado pelo Koda")
+        summary = args_dict.get("summary") or args_dict.get("title") or args_dict.get("description")
+        date = args_dict.get("date")
+        time_input = args_dict.get("time", "09:00")
+        description = args_dict.get("description", "Adicionado pelo Koda")
 
         if not summary or not date:
             return {"success": False, "error": "Parâmetros 'summary' (ou 'title') e 'date' são obrigatórios."}
 
-        start_datetime = f"{date}T{time}:00"
+        # Tratamento caso o LLM mande a hora completa com segundos (ex: 00:00:00) -> Reduz para HH:MM
+        if time_input and len(time_input.split(':')) >= 2:
+            parts = time_input.split(':')
+            time_input = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+
+        start_datetime = f"{date}T{time_input}:00"
         
         try:
             dt_start = datetime.datetime.fromisoformat(start_datetime)
             dt_end = dt_start + datetime.timedelta(hours=1)
             end_datetime = dt_end.isoformat()
         except Exception:
-            end_datetime = f"{date}T{int(time.split(':')[0])+1:02d}:{time.split(':')[1]}:00"
+            # Fallback seguro caso o cálculo falhe por strings corrompidas
+            try:
+                hora_adicional = int(time_input.split(':')[0]) + 1
+                if hora_adicional >= 24:
+                    end_datetime = f"{date}T23:59:59"
+                else:
+                    end_datetime = f"{date}T{hora_adicional:02d}:{time_input.split(':')[1]}:00"
+            except:
+                end_datetime = f"{date}T23:59:59"
 
         event = {
             'summary': summary,
