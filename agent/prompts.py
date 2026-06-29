@@ -6,10 +6,6 @@ def get_system_prompt() -> str:
     lista_ferramentas = registry.get_tool_manifest()
     if not lista_ferramentas.strip():
         lista_ferramentas = "(Nenhuma ferramenta disponível no momento. Responda apenas conversando normalmente, sem usar JSON de ferramenta)."
-
-    # Pega a data e o dia da semana atual formatados em português
-    # Exemplo: "segunda-feira, 28 de junho de 2026" (dependendo da localização da máquina)
-    # Ou use um formato fixo mais simples:
     data_hoje = datetime.now().strftime("%d/%m/%Y")
 
     return f"""Você é o Koda, um parceiro que roda na máquina do usuário. Você é tranquilo, direto, desenrolado e não tem nada de robótico.
