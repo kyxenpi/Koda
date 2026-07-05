@@ -4,12 +4,18 @@ from typing import Generator
 from groq import Groq
 from config import settings
 from core.logger import setup_logger
+from core.runtime import get_user_config
 
 logger = setup_logger("ModelManager")
 
+
 class ModelManager:
-    def __init__(self) -> None:
-        self.client = Groq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
+    def _get_client(self) -> Groq:
+        user_cfg = get_user_config()
+        api_key = (user_cfg or {}).get("groq_api_key") or settings.GROQ_API_KEY
+        if not api_key:
+            raise Exception("GROQ_API_KEY não configurada. Configure nas settings do site.")
+        return Groq(api_key=api_key)
 
     def _clean_messages(self, messages: list) -> list:
         cleaned = []
@@ -21,12 +27,10 @@ class ModelManager:
         return cleaned
 
     def execute_completion(self, messages: list, temperature: float = 0.0) -> str:
-        if not self.client:
-            raise Exception("Chave Groq API não configurada.")
-
+        client = self._get_client()
         cleaned = self._clean_messages(messages)
         try:
-            response = self.client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=settings.MODEL_PRIMARY,
                 messages=cleaned,
                 temperature=temperature,
@@ -38,7 +42,7 @@ class ModelManager:
             try:
                 print(f"🔄 [FALLBACK] Disparando modelo secundário: {settings.MODEL_SECONDARY}...")
                 time.sleep(1)
-                response = self.client.chat.completions.create(
+                response = client.chat.completions.create(
                     model=settings.MODEL_SECONDARY,
                     messages=cleaned,
                     temperature=temperature,
@@ -51,13 +55,11 @@ class ModelManager:
                 raise Exception("Todos os motores de IA estão indisponíveis ou com limite excedido no momento.")
 
     def stream_completion(self, messages: list, temperature: float = 0.0) -> Generator[str, None, None]:
-        if not self.client:
-            raise Exception("Chave Groq API não configurada.")
-
+        client = self._get_client()
         cleaned = self._clean_messages(messages)
 
         def _stream(model: str):
-            stream = self.client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=model,
                 messages=cleaned,
                 temperature=temperature,
@@ -87,13 +89,13 @@ class ModelManager:
                 raise Exception("Todos os motores de IA estão indisponíveis ou com limite excedido no momento.")
 
     def transcrever_audio(self, filename: str, audio_bytes: bytes) -> str:
-        if not self.client:
-            raise Exception("Groq indisponível.")
-        transcricao = self.client.audio.transcriptions.create(
+        client = self._get_client()
+        transcricao = client.audio.transcriptions.create(
             file=(filename, audio_bytes),
             model="whisper-large-v3",
             response_format="json"
         )
         return transcricao.text
+
 
 model_manager = ModelManager()

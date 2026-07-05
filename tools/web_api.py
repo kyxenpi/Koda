@@ -1,6 +1,5 @@
 import json
-import ast
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import requests as http_requests
 
 from tools.base import tool
@@ -18,12 +17,7 @@ def _parse_args(args: Any) -> Dict[str, Any]:
         try:
             return json.loads(s)
         except json.JSONDecodeError:
-            try:
-                p = ast.literal_eval(s)
-                if isinstance(p, dict):
-                    return p
-            except Exception:
-                pass
+            pass
     return {}
 
 

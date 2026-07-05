@@ -1,18 +1,18 @@
 import os
-import warnings
 import requests
 
-OCR_API_KEY = os.environ.get("OCR_SPACE_API_KEY")
-if not OCR_API_KEY:
-    warnings.warn("OCR_SPACE_API_KEY não definida. OCR pode falhar.")
-    OCR_API_KEY = "helloworld"
+from config import settings
+from core.runtime import get_user_value
+
+OCR_API_KEY = settings.OCR_SPACE_API_KEY
 
 
 def read_image(image_input: str):
     url = "https://api.ocr.space/parse/image"
+    api_key = get_user_value("ocr_api_key") or OCR_API_KEY
 
     payload = {
-        'apikey': OCR_API_KEY,
+        'apikey': api_key,
         'language': 'por',
         'isOverlayRequired': False
     }

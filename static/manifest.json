@@ -1,0 +1,14 @@
+{
+  "name": "Koda - AI Assistant",
+  "short_name": "Koda",
+  "description": "Assistente pessoal com IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/static/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

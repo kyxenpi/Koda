@@ -1,7 +1,6 @@
 import time
 import re
 import json
-import ast
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Dict, Any, Optional
@@ -34,7 +33,6 @@ class ToolExecutor:
         strategies = [
             self._extract_json_block,
             self._extract_json_regex,
-            self._parse_ast_dict,
         ]
 
         for strategy in strategies:
@@ -67,18 +65,6 @@ class ToolExecutor:
             if match:
                 candidate = match.group(0)
                 return json.loads(candidate)
-        except Exception:
-            pass
-        return None
-
-    def _parse_ast_dict(self, text: str) -> Optional[Dict[str, Any]]:
-        try:
-            text = text.strip()
-            if text.startswith("```"):
-                text = re.sub(r"```(\w+)?", "", text).strip()
-            parsed = ast.literal_eval(text)
-            if isinstance(parsed, dict):
-                return parsed
         except Exception:
             pass
         return None

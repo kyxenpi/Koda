@@ -2,7 +2,6 @@ import json
 import datetime
 import io
 import time
-import ast
 import base64
 import os
 from pathlib import Path
@@ -19,6 +18,7 @@ from tools.base import tool, IS_CLOUD
 from config import settings
 from core.security import SecurityLevel
 from core.logger import setup_logger
+from core.runtime import get_user_config
 from database.memory_db import db
 
 logger = setup_logger("GoogleTools")
@@ -34,13 +34,8 @@ def safe_parse_args(args: Any) -> Dict[str, Any]:
         args_str = args.strip()
         try:
             return json.loads(args_str)
-        except json.JSONDecodeError:
-            try:
-                parsed = ast.literal_eval(args_str)
-                if isinstance(parsed, dict):
-                    return parsed
-            except Exception as e:
-                logger.error(f"Falha ao parsear args: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Falha ao parsear args: {e}")
     return {}
 
 
@@ -62,9 +57,20 @@ def get_google_credentials():
     creds = None
     token_path = Path('token.json')
 
-    if token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(token_path), settings.SCOPES)
-    elif settings.GOOGLE_TOKEN_JSON:
+    user_cfg = get_user_config()
+    user_token = (user_cfg or {}).get("google_token")
+    user_creds = (user_cfg or {}).get("google_credentials")
+
+    if user_token:
+        try:
+            creds = Credentials.from_authorized_user_info(json.loads(user_token), settings.SCOPES)
+        except Exception as e:
+            logger.warning(f"Token do usuário inválido: {e}")
+
+    if creds and creds.valid:
+        return creds
+
+    if not creds and settings.GOOGLE_TOKEN_JSON:
         try:
             creds = Credentials.from_authorized_user_info(
                 json.loads(settings.GOOGLE_TOKEN_JSON), settings.SCOPES
@@ -72,23 +78,29 @@ def get_google_credentials():
         except Exception as e:
             logger.error(f"Erro no GOOGLE_TOKEN_JSON: {e}")
 
+    if not creds and not IS_CLOUD and token_path.exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), settings.SCOPES)
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
             except Exception as e:
                 logger.warning(f"Falha ao renovar token: {e}")
-                if "invalid_grant" in str(e) and token_path.exists():
-                    token_path.unlink()
                 creds = None
 
         if not creds:
-            if IS_CLOUD:
+            if user_creds:
+                flow = InstalledAppFlow.from_client_config(
+                    json.loads(user_creds), settings.SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            elif IS_CLOUD:
                 raise Exception(
                     "Credenciais Google expiradas. Configure GOOGLE_TOKEN_JSON "
                     "como variável de ambiente no Render com um token renovado."
                 )
-            if Path('credentials.json').exists():
+            elif not IS_CLOUD and Path('credentials.json').exists():
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', settings.SCOPES
                 )
@@ -101,7 +113,7 @@ def get_google_credentials():
             else:
                 raise Exception("Credenciais Google não encontradas.")
 
-            if not settings.GOOGLE_TOKEN_JSON:
+            if not IS_CLOUD and not settings.GOOGLE_TOKEN_JSON:
                 token_path.write_text(creds.to_json())
 
     return creds
@@ -176,7 +188,7 @@ def google_docs_tool(args: Any) -> Dict[str, Any]:
                 return {"success": False, "error": f"Erro ao acessar doc: {e}"}
 
         file_metadata = {'name': title, 'mimeType': 'application/vnd.google-apps.document'}
-        content_html = content.replace('\n', '<br>')
+        content_html = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
         fh = io.BytesIO(f"<html><body>{content_html}</body></html>".encode('utf-8'))
         media = MediaIoBaseUpload(fh, mimetype='text/html', resumable=True)
 
